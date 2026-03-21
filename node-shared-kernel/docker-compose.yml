@@ -1,0 +1,88 @@
+services:
+  # --- Database Layer ---
+  postgres:
+    image: postgres:15-alpine
+    container_name: my_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- Caching & Idempotency Layer ---
+  redis:
+    image: redis:7-alpine
+    container_name: my_redis
+    restart: always
+    ports:
+      - "${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # --- Messaging Layer (Redpanda / Kafka API) ---
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.2.1
+    container_name: redpanda-clone
+    # Added 'redpanda' alias so your worker's KAFKA_BROKERS=redpanda:9092 works
+    networks:
+      default:
+        aliases:
+          - redpanda 
+    command:
+      - redpanda start
+      - --overprovisioned
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --node-id 0
+      - --check=false
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://127.0.0.1:19092
+    ports:
+      - "19092:19092"
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  # --- Worker Layer (The Missing Piece) ---
+  node-shared-kernel:
+    image: node:22-alpine # Assuming your image source
+    container_name: node-shared-kernel
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - REDIS_HOST=redis
+      - KAFKA_BROKERS=redpanda:9092
+      # CRITICAL FIX: Explicitly passing the topic name
+      - KAFKA_TOPIC=ledger-events 
+      - BATCH_SIZE=100
+      - OUTBOX_LIMIT=100
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    command: npm start
+
+volumes:
+  postgres_data:

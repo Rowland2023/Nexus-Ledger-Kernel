@@ -1,0 +1,21 @@
+{
+  "name": "@yourorg/shared-kernel",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "private": true,
+  "dependencies": {
+    "express": "^5.2.1",
+    "ioredis": "^5.10.0",
+    "jsonwebtoken": "^9.0.2",
+    "kafkajs": "^2.2.4",
+    "opossum": "^6.0.0",
+    "pg": "^8.11.0",
+    "pino": "^8.15.0",
+    "prom-client": "^14.1.0",
+    "uuid": "^9.0.0"
+  }
+}

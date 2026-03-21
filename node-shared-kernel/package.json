@@ -1,0 +1,17 @@
+{
+  "name": "my-org",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared-kernel",
+    "my-node-project"
+  ],
+  "scripts": {
+    "health": "node shared-kernel/infrastructure/diagnostics/health.js",
+    "start": "npm run start --workspace=my-node-project"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "kafkajs": "^2.2.4"
+  }
+}
