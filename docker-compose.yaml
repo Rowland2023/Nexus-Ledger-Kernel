@@ -1,111 +1,81 @@
-version: '3.8'
-
 services:
-  # --- Backend (NexusLedger Core) ---
-  node-shared-kernel:
-    build:
-      context: "." 
-      dockerfile: ./node-shared-kernel/Dockerfile
-    container_name: node-shared-kernel
-    working_dir: /app/node-shared-kernel
-    command: npm run start --workspace=my-node-project
-    env_file: .env
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - KAFKA_BROKERS=redpanda:9092
-      - BATCH_SIZE=100
-      - OUTBOX_LIMIT=100
-      - DB_NAME=${DB_NAME}
-      - POSTGRES_HOST=postgres
-      - REDIS_HOST=redis
-    volumes:
-      - ./node-shared-kernel:/app/node-shared-kernel
-      - /app/node-shared-kernel/node_modules
-      - ./node-shared-kernel/shared-kernel:/app/node-shared-kernel/node_modules/@yourorg/shared-kernel
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      redpanda:
-        condition: service_healthy
-
-  # --- Frontend (NexusLedger UI) ---
-  front-end:
-    build:
-      context: ./front-end/NexusLedger
-      dockerfile: Dockerfile
-    container_name: front-end
-    working_dir: /app
-    ports:
-      - "5173:80"  # 🔥 FIXED: Map host 5173 to Nginx internal port 80
-    environment:
-      - VITE_API_URL=http://localhost:3000 # 🔥 MUST be localhost for the browser
-      - VITE_DEV_TOKEN=${VITE_DEV_TOKEN}
-    volumes:
-      - ./front-end/NexusLedger:/app
-      - /app/node_modules
-    depends_on:
-      - node-shared-kernel
-
-  # --- Database Layer ---
-  postgres:
+  # --- 1. DATABASE (PostgreSQL) ---
+  my_postgres:
     image: postgres:15-alpine
     container_name: my_postgres
-    restart: always
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
-    ports:
-      - "${DB_PORT}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
+    networks:
+      - ledger-network
 
-  # --- Caching & Idempotency Layer ---
-  redis:
-    image: redis:7-alpine
-    container_name: my_redis
-    restart: always
-    ports:
-      - "${REDIS_PORT}:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  # --- Messaging Layer (Redpanda) ---
-  redpanda:
+  # --- 2. KAFKA CLONE (Redpanda) ---
+  redpanda-clone:
     image: docker.redpanda.com/redpandadata/redpanda:v23.2.1
     container_name: redpanda-clone
     command:
       - redpanda start
-      - --overprovisioned
       - --smp 1
-      - --memory 1G
-      - --reserve-memory 0M
-      - --node-id 0
-      - --check=false
+      - --overprovisioned
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
-      - --advertise-kafka-addr internal://redpanda:9092,external://127.0.0.1:19092
+      - --advertise-kafka-addr internal://redpanda-clone:9092,external://localhost:19092
     ports:
       - "19092:19092"
-      - "9092:9092"
-    healthcheck:
-      test: ["CMD", "rpk", "cluster", "info"]
-      interval: 5s
-      timeout: 10s
-      retries: 5
+    networks:
+      - ledger-network
 
-volumes:
-  postgres_data:
-    external: true
-    name: e-commerce-managemnt-app_postgres_data
+  # --- 3. BACKEND (Node.js API) ---
+  node-shared-kernel:
+    build:
+      context: . 
+      dockerfile: ./node-shared-kernel/my-node-project/Dockerfile
+    container_name: node-shared-kernel
+    ports:
+      - "3000:3000"
+    environment:
+      # --- DATABASE VARS ---
+      - DB_HOST=my_postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@my_postgres:5432/${DB_NAME}?sslmode=disable
+      
+      # 🚀 --- KAFKA/REDPANDA VARS (The Final Fix) ---
+      - KAFKA_BROKER=redpanda-clone:9092
+      - KAFKA_BROKERS=redpanda-clone:9092
+      
+      # --- SYSTEM VARS ---
+      - NODE_ENV=development
+    depends_on:
+      my_postgres:
+        condition: service_healthy
+      redpanda-clone:
+        condition: service_started
+    networks:
+      - ledger-network
+
+  # --- 4. FRONTEND (Nginx Serving React) ---
+  front-end:
+    build:
+      context: .
+      dockerfile: ./front-end/Dockerfile 
+    container_name: front-end
+    ports:
+      - "80:80" 
+    depends_on:
+      node-shared-kernel:
+        condition: service_started
+    networks:
+      - ledger-network
+
+networks:
+  ledger-network:
+    driver: bridge

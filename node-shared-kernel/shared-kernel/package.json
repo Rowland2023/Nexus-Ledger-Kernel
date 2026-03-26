@@ -4,7 +4,8 @@
   "type": "module",
   "main": "./index.js",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./services/*": "./services/*"
   },
   "private": true,
   "dependencies": {
@@ -12,6 +13,7 @@
     "ioredis": "^5.10.0",
     "jsonwebtoken": "^9.0.2",
     "kafkajs": "^2.2.4",
+    "natural": "^8.1.1",
     "opossum": "^6.0.0",
     "pg": "^8.11.0",
     "pino": "^8.15.0",

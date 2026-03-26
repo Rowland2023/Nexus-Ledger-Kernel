@@ -1,0 +1,47 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.navbar {
+  background: #222;
+  color: white;
+  padding: 1rem;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr; /* left, center, right */
+  gap: 1rem;
+  flex: 1;
+}
+
+.left-sidebar,
+.right-sidebar {
+  background: #111;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.main-content {
+  background: #f9f9f9;
+  padding: 1rem;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.product-card {
+  background: white;
+  border: 1px solid #ddd;
+  padding: 1rem;
+  text-align: center;
+}
+.product-card img {
+  max-width: 100%;
+  height: auto;
+}
