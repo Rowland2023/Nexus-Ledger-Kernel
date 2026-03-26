@@ -2,7 +2,8 @@ import { infrastructure } from '@yourorg/shared-kernel';
 import { verifyBusinessEntity } from '@yourorg/shared-kernel/services/verification.js';
 
 /**
- * ✅ FETCH LEDGER ENTRIES
+ * ✅ FETCH RECENT ORDERS
+ * Used by the BUSINESS_OPS frontend tab
  */
 export async function listOrders(req, res) {
   let client;
@@ -28,53 +29,72 @@ export async function listOrders(req, res) {
 }
 
 /**
- * ✅ ATOMIC ORDER PLACEMENT
+ * ✅ ATOMIC ORDER PLACEMENT (KYC + TRANSACTIONAL OUTBOX)
  */
 export async function placeOrder(req, res) {
+  const { businessName, bankNameFromAPI, amount, items } = req.body;
   let client;
+
   try {
-    const { businessName, bankNameFromAPI, amount, items } = req.body;
-    
-    // 🔍 1. VERIFICATION (Pre-DB check to save connection pool)
+    // 🔍 1. PRE-DB VERIFICATION (Normalization & Fuzzy Match)
+    // We do this BEFORE opening a DB connection to keep the pool efficient
     const check = await verifyBusinessEntity(businessName, bankNameFromAPI);
+    
     if (check.isRejected) {
-      return res.status(400).json({ success: false, message: 'KYC_MATCH_FAILURE' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'KYC_MATCH_FAILURE',
+        score: check.score 
+      });
     }
 
-    // ✅ 2. ACID WRITE with Transaction
+    // 🔗 2. ACID TRANSACTION (The "Dual Write")
     client = await infrastructure.primaryPool.connect();
-    await client.query('BEGIN'); // Start Transaction
+    await client.query('BEGIN'); 
 
-    const query = `
-      INSERT INTO orders (
-        customer_name, 
-        total_amount, 
-        goods_summary, 
-        status, 
-        matching_score, 
-        created_at
-      )
-      VALUES ($1, $2, $3, $4, $5, NOW())
-      RETURNING id
+    // A. Insert the Order (Source of Truth)
+    const orderQuery = `
+      INSERT INTO orders (customer_name, total_amount, goods_summary, status, matching_score)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
     `;
-
-    const values = [
+    const orderValues = [
       businessName, 
       Number(amount), 
       JSON.stringify(items || []), 
-      'SUCCESS', 
+      'COMPLETED', 
       check.score
     ];
+    const orderRes = await client.query(orderQuery, orderValues);
+    const newOrder = orderRes.rows[0];
 
-    const result = await client.query(query, values);
+    // B. Insert into Outbox (The Event Relay)
+    // This ensures Kafka is notified even if the worker restarts later
+    const eventPayload = {
+      event: 'ORDER_COMPLETED',
+      data: newOrder,
+      occurred_at: new Date().toISOString(),
+      metadata: { source: 'nexus-ledger-api' }
+    };
+
+    await client.query(
+      'INSERT INTO outbox (payload, status) VALUES ($1, $2)',
+      [eventPayload, 'PENDING']
+    );
+
+    // ✅ COMMIT BOTH: Order is saved AND event is queued
+    await client.query('COMMIT'); 
+
+    console.log(`✅ Order ${newOrder.id} Placed & Outbox Queued.`);
     
-    await client.query('COMMIT'); // Commit Transaction
-    
-    return res.status(201).json({ success: true, orderId: result.rows[0].id });
+    return res.status(201).json({ 
+      success: true, 
+      data: newOrder 
+    });
 
   } catch (error) {
-    if (client) await client.query('ROLLBACK'); // Rollback on failure
-    console.error('❌ LEDGER_SYNC_ERROR:', error.message);
+    if (client) await client.query('ROLLBACK'); 
+    console.error('❌ TRANSACTION_FAILED:', error.message);
     return res.status(500).json({ success: false, message: error.message });
   } finally {
     if (client) client.release();

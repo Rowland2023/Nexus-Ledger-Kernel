@@ -65,11 +65,11 @@ services:
   # --- 4. FRONTEND (Nginx Serving React) ---
   front-end:
     build:
-      context: .
-      dockerfile: ./front-end/Dockerfile 
+      context: ./front-end
+      dockerfile: Dockerfile 
     container_name: front-end
     ports:
-      - "80:80" 
+      - "5173:5173" # Match Vite's port 
     depends_on:
       node-shared-kernel:
         condition: service_started

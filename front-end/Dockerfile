@@ -2,18 +2,14 @@ FROM node:22-bullseye
 
 WORKDIR /app
 
-# 1. Copy only manifests first
-COPY node-shared-kernel/package*.json ./
+# 1. Copy only the frontend dependency files
+COPY package*.json ./
 
-# 2. Install dependencies (This is usually where it hangs if the network is slow)
+# 2. Install dependencies
 RUN npm install --force
 
-# 3. Copy the source code
-COPY node-shared-kernel/ .
+# 3. Copy the rest of the FRONTEND code
+COPY . .
 
-# 4. If you have a build step (TypeScript/NestJS), add it here
-# RUN npm run build 
-
-EXPOSE 3000
-
+# 4. Start the Vite dev server
 CMD ["npm", "run", "dev"]
