@@ -1,5 +1,15 @@
 import { calculateMatchingScore } from '../utils/matching.js';
 
+// ==========================================
+// 🧪 MOCK SECTION: SIMULATED BANK PROVIDER
+// ==========================================
+export const getBankRecordFromAPI = async (accountNumber) => {
+  // In a real scenario, this would be an axios call to NiFES or a local bank
+  // For testing "KYC_MATCH_FAILURE", we return a mismatching name
+  return "ABC TRANSPORT LIMITED"; 
+};
+// ==========================================
+
 export const verifyBusinessEntity = async (businessName, bankRecordName) => {
   // 🧼 NORMALIZATION: Ensure case-insensitivity and remove trailing spaces
   const nameA = (businessName || "").toString().toUpperCase().trim();
@@ -12,6 +22,6 @@ export const verifyBusinessEntity = async (businessName, bankRecordName) => {
     score,
     isTrusted: score >= 90,
     needsReview: score >= 70 && score < 90,
-    isRejected: score < 70 // 400 Error triggered if < 70
+    isRejected: score < 70 // ❌ 400 Error triggered if match is poor
   };
 };

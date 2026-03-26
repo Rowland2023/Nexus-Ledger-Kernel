@@ -8,22 +8,19 @@ const BusinessDashboard = () => {
 
   /**
    * 📡 REAL-TIME SYNC
-   * Updated to use the explicit backend port (3000) to avoid Connection Refused.
+   * Fetches the latest 50 transactions from the Lagos Ledger (Postgres)
    */
   const syncDashboard = async () => {
     try {
-      // ✅ FIX: Use absolute URL to target the backend container port
       const res = await fetch('http://localhost:3000/api/v1/order/list');
       
       if (!res.ok) throw new Error("Ledger Offline");
       
       const result = await res.json();
-      
-      // ✅ FIX: Extract the array from the 'data' property
       const actualOrders = Array.isArray(result.data) ? result.data : [];
       setOrders(actualOrders);
       
-      // ✅ FIX: Calculate Revenue using the actual array and correct column name
+      // Calculate Revenue on the fly
       const revenue = actualOrders.reduce((acc, curr) => acc + Number(curr.total_amount || 0), 0);
       setStats(prev => ({ ...prev, totalRevenue: revenue }));
       
@@ -41,13 +38,14 @@ const BusinessDashboard = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-sans">
       
+      {/* 🟢 TOP STATUS NOTIFICATION */}
       {status === 'SETTLED' && (
-        <div className="fixed top-6 right-6 z-50 bg-emerald-500 text-black px-4 py-2 rounded font-black text-[10px] shadow-2xl animate-pulse">
-          LATEST_TX_COMMITTED_TO_LEDGER
+        <div className="fixed top-6 right-6 z-50 bg-emerald-500 text-black px-4 py-2 rounded font-black text-[10px] shadow-2xl animate-bounce">
+          TX_COMMITTED_TO_POSTGRES_LEDGER
         </div>
       )}
 
-      {/* 📊 KPI HEADER */}
+      {/* 📊 KPI HEADER (Real-time Stats) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-slate-900 border-l-4 border-emerald-500 p-6 rounded-r-xl shadow-lg">
           <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Revenue Velocity</h3>
@@ -70,7 +68,7 @@ const BusinessDashboard = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         
-        {/* 🕹️ COMMAND PANEL */}
+        {/* 🕹️ COMMAND PANEL (The Transaction Gate) */}
         <div className="lg:col-span-1 bg-black border border-slate-800 p-6 rounded-xl self-start sticky top-24">
           <h2 className="text-xs font-black text-emerald-500 mb-6 tracking-tighter">TX_INITIATION_PROMPT</h2>
           
@@ -80,7 +78,7 @@ const BusinessDashboard = () => {
               
               const payload = {
                 businessName: formData.get('entity'),
-                bankNameFromAPI: formData.get('entity'),
+                bankNameFromAPI: formData.get('entity'), // Mimics bank response for Demo
                 amount: Number(formData.get('amount')),
                 jurisdiction: 'NG',
                 items: [{ note: formData.get('desc') || "General Settlement" }]
@@ -106,32 +104,49 @@ const BusinessDashboard = () => {
           </form>
         </div>
 
-        {/* 📑 RECENT ACTIVITY */}
+        {/* 📑 TRANSACTION LOG (The Lagos Ledger View) */}
         <div className="lg:col-span-3">
           <h2 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.2em] mb-4">Lagos District Transactions</h2>
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
             <table className="w-full text-left text-[11px]">
-              <thead className="bg-black text-slate-500 uppercase">
+              <thead className="bg-black text-slate-500 uppercase font-black">
                 <tr>
                   <th className="p-4">ID</th>
                   <th className="p-4">Entity</th>
                   <th className="p-4">Value</th>
+                  <th className="p-4 text-emerald-500">Integrity</th>
                   <th className="p-4">Timestamp</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {orders.length > 0 ? (
                   orders.map(order => (
-                    <tr key={order.id} className="hover:bg-black/40 transition-colors">
+                    <tr key={order.id} className="hover:bg-black/40 transition-colors group">
                       <td className="p-4 font-mono text-emerald-700">#00{order.id}</td>
-                      <td className="p-4 font-bold">{order.customer_name || 'N/A'}</td>
+                      <td className="p-4 font-bold group-hover:text-white transition-colors">{order.customer_name || 'N/A'}</td>
                       <td className="p-4 font-mono text-white">₦{Number(order.total_amount || 0).toLocaleString()}</td>
-                      <td className="p-4 text-slate-500">{order.created_at ? new Date(order.created_at).toLocaleTimeString() : '--:--'}</td>
+                      
+                      {/* 🛡️ INTEGRITY SCORE BADGE */}
+                      <td className="p-4">
+                        <span className={`px-2 py-1 rounded-sm text-[9px] font-black border tracking-tighter ${
+                          order.matching_score >= 90 ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800' :
+                          order.matching_score >= 70 ? 'bg-amber-900/30 text-amber-400 border-amber-800' :
+                          'bg-red-900/30 text-red-400 border-red-800'
+                        }`}>
+                          {order.matching_score}%_MATCH
+                        </span>
+                      </td>
+
+                      <td className="p-4 text-slate-500 font-mono">
+                        {order.created_at ? new Date(order.created_at).toLocaleTimeString() : '--:--'}
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="p-10 text-center text-slate-600 italic">No transactions found in ledger stream.</td>
+                    <td colSpan={5} className="p-10 text-center text-slate-600 italic">
+                      📡 No transactions found in ledger stream. Awaiting TX_INIT...
+                    </td>
                   </tr>
                 )}
               </tbody>
