@@ -13,6 +13,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    # 🚀 FIX 1: Add Persistence & Auto-Initialization
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     networks:
       - ledger-network
 
@@ -26,6 +30,9 @@ services:
       - --overprovisioned
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr internal://redpanda-clone:9092,external://localhost:19092
+    # 🚀 FIX 2: Persist Kafka metadata so topics don't vanish
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
     ports:
       - "19092:19092"
     networks:
@@ -40,19 +47,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # --- DATABASE VARS ---
       - DB_HOST=my_postgres
       - DB_PORT=5432
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
       - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@my_postgres:5432/${DB_NAME}?sslmode=disable
-      
-      # 🚀 --- KAFKA/REDPANDA VARS (The Final Fix) ---
       - KAFKA_BROKER=redpanda-clone:9092
       - KAFKA_BROKERS=redpanda-clone:9092
-      
-      # --- SYSTEM VARS ---
       - NODE_ENV=development
     depends_on:
       my_postgres:
@@ -69,12 +71,17 @@ services:
       dockerfile: Dockerfile 
     container_name: front-end
     ports:
-      - "5173:5173" # Match Vite's port 
+      - "5173:5173" 
     depends_on:
       node-shared-kernel:
         condition: service_started
     networks:
       - ledger-network
+
+# 🚀 FIX 3: Define the volumes at the bottom
+volumes:
+  postgres_data:
+  redpanda_data:
 
 networks:
   ledger-network:
