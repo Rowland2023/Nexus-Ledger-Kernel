@@ -1,22 +1,22 @@
-# spring-fiat-core
+# node-fiat-core
 
-Stateless ledger microservice for banking rails + account verification. Spring Boot + PostgreSQL.
+Stateless ledger microservice for banking rails + account verification. Node.js + PostgreSQL.
 
 **Core:** Double-entry ledger where DB enforces invariants, not app code. Built for bank webhook ingestion with exactly-once semantics.
 
 **Key features:**
-1. **Bank Account Verification** — CoP (UK), Plaid (US), SEPA (EU) adapters with fuzzy name matching to verify beneficiary accounts before payout
-2. **JWT + RBAC** — Via `core-security-starter`. Stateless auth for multi-tenant fintech
-3. **Balance Triggers** — `CREATE CONSTRAINT TRIGGER check_balanced` — DB rejects tx if debit != credit
-4. **Idempotent Webhooks** — `UNIQUE(provider_ref)` + transactional outbox. Survives 10x bank retries
-5. **Event Audit Trail** — Spring Events for compliance logs without coupling domains
+1. **Bank Account Verification** — CoP (UK), Plaid (US), SEPA (EU) adapters with fuzzy name matching
+2. **JWT + RBAC** — Stateless auth via `jsonwebtoken` + middleware
+3. **Balance Triggers** — `CREATE CONSTRAINT TRIGGER check_balanced` — DB rejects tx if debit != credit  
+4. **Idempotent Webhooks** — `UNIQUE(provider_ref)` + transactional outbox via BullMQ
+5. **Event Audit Trail** — Emits to Kafka/Redpanda for compliance
 
-**Use case:** Ingest bank webhooks from PAYCIS/ARCO-style rails. Verify accounts via CoP/Plaid, post to ledger, emit events to Kafka. Zero duplicate credits, zero unbalanced books.
+**Use case:** Ingest PAYCIS/ARCO-style webhooks. Verify accounts, post to ledger, emit events. Zero duplicates.
 
-**Stack:** Java 21, Spring Boot 3.4, PostgreSQL 15, JJWT, Docker, Testcontainers
+**Stack:** Node.js 20, Fastify, PostgreSQL 15, Prisma, BullMQ, Docker, Testcontainers
 
 **Run locally:**
 ```bash
-docker compose up -d postgres
-mvn spring-boot:run
-curl -X POST localhost:8080/api/v1/ledger/transaction -H "Authorization: Bearer $JWT"
+docker compose up -d
+npm install && npm run migrate
+npm run dev
